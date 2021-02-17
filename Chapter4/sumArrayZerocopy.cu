@@ -1,7 +1,7 @@
 #include "../common.h"
 
 
-void initialData(float *ip, int size) {
+/*void initialData(float *ip, int size) {
     time_t t;
     srand((unsigned int) time(&t));
     for (int i=0; i<size; i++) {
@@ -18,7 +18,7 @@ bool checkResult(float *A, float *B, int size) {
         //printf("%d : %f %f\n", idx, A[idx], B[idx]);
     }
     return true;
-}
+}*/
 
 void sumArraysOnHost(float *A, float *B, float *C, const int N) {
     for (int idx = 0; idx < N; idx++) {

@@ -1,0 +1,7 @@
+CUDA_ADD_EXECUTABLE(checkDeviceInfo checkDeviceInfo.cu)
+CUDA_ADD_EXECUTABLE(checkDimension checkDimension.cu)
+CUDA_ADD_EXECUTABLE(checkThreadIndex checkThreadIndex.cu)
+CUDA_ADD_EXECUTABLE(defineGridBlock defineGridBlock.cu)
+CUDA_ADD_EXECUTABLE(sumArrays sumArrays.cu)
+CUDA_ADD_EXECUTABLE(sumArraysOnGPU-timer sumArraysOnGPU-timer.cu)
+CUDA_ADD_EXECUTABLE(sumMatrixOnGPU-2D-grid-block sumMatrixOnGPU-2D-grid-2D-block.cu)

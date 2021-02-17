@@ -1,0 +1,11 @@
+CUDA_ADD_EXECUTABLE(globalVariable4 globalVariable.cu)
+CUDA_ADD_EXECUTABLE(memTransfer4 memTransfer.cu)
+CUDA_ADD_EXECUTABLE(pinMemTransfer4 pinMemTransfer.cu)
+CUDA_ADD_EXECUTABLE(readSegment4 readSegment.cu)
+CUDA_ADD_EXECUTABLE(simpleMethAoS4 simpleMethAoS.cu)
+CUDA_ADD_EXECUTABLE(simpleMethSoA4 simpleMethSoA.cu)
+CUDA_ADD_EXECUTABLE(sumArrayZerocopy4 sumArrayZerocopy.cu)
+CUDA_ADD_EXECUTABLE(writeSegment4 writeSegment.cu)
+
+list(APPEND CUDA_NVCC_FLAGS, "-Xptxas -dlcm=ca")
+CUDA_ADD_EXECUTABLE(transpose4 transpose.cu)

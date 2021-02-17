@@ -1,0 +1,5 @@
+CUDA_ADD_EXECUTABLE(checkDeviceInfo3 checkDeviceInfo.cu)
+#CUDA_ADD_EXECUTABLE(nestedHelloWorld3 nestedHelloWorld.cu)
+CUDA_ADD_EXECUTABLE(reduceInteger3 reduceInteger.cu)
+CUDA_ADD_EXECUTABLE(simpleDivergence3 simpleDivergence.cu)
+CUDA_ADD_EXECUTABLE(sumMatrixOnGPU-2D-grid-2D-block3 sumMatrixOnGPU-2D-grid-2D-block.cu)
