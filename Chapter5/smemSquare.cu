@@ -15,6 +15,19 @@ void printData(char* msg, int *in, const int size) {
     return;
 }
 
+void printData(char* msg, int *in, const int x, const int y) {
+    printf("%s: \n", msg);
+    for (int i=0; i<y; i++) {
+        for (int j=0; j<x; j++) {
+            printf("%5d", in[i*x+j]);
+            fflush(stdout);
+        }
+        printf("\n");
+    }
+    printf("\n");
+    return;
+}
+
 __global__ void setRowReadRow (int *out) {
     __shared__ int tile[BDIMY][BDIMX];
     unsigned int idx = threadIdx.y * blockDim.x + threadIdx.x;
@@ -32,7 +45,7 @@ __global__ void setColReadCol(int *out) {
 }
 
 __global__ void setRowReadCol(int *out) {
-    __shared__ int tile[BDIMX][BDIMY];
+    __shared__ int tile[BDIMY][BDIMX];
     unsigned int idx = threadIdx.y * blockDim.x + threadIdx.x;
     tile[threadIdx.y][threadIdx.x] = idx;
 

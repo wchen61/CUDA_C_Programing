@@ -219,16 +219,16 @@ __global__ void reduceCompleteUnroll(int *g_idata, int *g_odata, unsigned int n)
     }
     __syncthreads();
 
-    if (blockDim.x >= 1024 && tid < 512) idata[tid] += idata[tid + 512];
+    if (iBlockSize >= 1024 && tid < 512) idata[tid] += idata[tid + 512];
     __syncthreads();
 
-    if (blockDim.x >= 512 && tid < 256) idata[tid] += idata[tid + 256];
+    if (iBlockSize >= 512 && tid < 256) idata[tid] += idata[tid + 256];
     __syncthreads();
 
-    if (blockDim.x >= 256 && tid < 128) idata[tid] += idata[tid + 128];
+    if (iBlockSize >= 256 && tid < 128) idata[tid] += idata[tid + 128];
     __syncthreads();
 
-    if (blockDim.x >=128 && tid < 64) idata[tid] += idata[tid + 64];
+    if (iBlockSize >=128 && tid < 64) idata[tid] += idata[tid + 64];
     __syncthreads();
 
     if (tid < 32) {

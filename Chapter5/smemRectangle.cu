@@ -3,7 +3,7 @@
 
 #define BDIMX 32 
 #define BDIMY 16 
-#define IPAD 1
+#define IPAD 2
 
 void printData(char* msg, int *in, const int size) {
     printf("%s: ", msg);
@@ -13,6 +13,22 @@ void printData(char* msg, int *in, const int size) {
     }
     printf("\n");
     return;
+}
+
+__global__ void setRowReadRow (int *out) {
+    __shared__ int tile[BDIMY][BDIMX];
+    unsigned int idx = threadIdx.y * blockDim.x + threadIdx.x;
+    tile[threadIdx.y][threadIdx.x] = idx;
+    __syncthreads();
+    out[idx] = tile[threadIdx.y][threadIdx.x];
+}
+
+__global__ void setColReadCol(int *out) {
+    __shared__ int tile[BDIMX][BDIMY];
+    unsigned int idx = threadIdx.y * blockDim.x + threadIdx.x;
+    tile[threadIdx.x][threadIdx.y] = idx;
+    __syncthreads();
+    out[idx] = tile[threadIdx.x][threadIdx.y];
 }
 
 __global__ void setRowReadCol(int *out) {
@@ -25,6 +41,47 @@ __global__ void setRowReadCol(int *out) {
 
     __syncthreads();
     out[idx] = tile[icol][irow];
+}
+
+__global__ void setRowReadColDyn(int *out) {
+    extern __shared__ int tile[];
+    unsigned int idx = threadIdx.y * blockDim.x + threadIdx.x;
+    unsigned int irow = idx / blockDim.y;
+    unsigned int icol = idx % blockDim.y;
+
+    unsigned int col_idx = icol * blockDim.x + irow;
+
+    tile[idx] = idx;
+
+    __syncthreads();
+
+    out[idx] = tile[col_idx];
+}
+
+__global__ void setRowReadColPad(int *out) {
+    __shared__ int tile[BDIMY][BDIMX + IPAD];
+    unsigned int idx = threadIdx.y * blockDim.x + threadIdx.x;
+    unsigned int irow = idx / blockDim.y;
+    unsigned int icol = idx % blockDim.y;
+    tile[threadIdx.y][threadIdx.x] = idx;
+    __syncthreads();
+
+    out[idx] = tile[icol][irow];
+}
+
+__global__ void setRowReadColDynPad(int *out) {
+    extern __shared__ int tile[];
+    unsigned int idx = threadIdx.y * blockDim.x + threadIdx.x;
+    unsigned int irow = idx / blockDim.y;
+    unsigned int icol = idx % blockDim.y;
+
+    unsigned int row_idx = threadIdx.y * (blockDim.x + IPAD) + threadIdx.x;
+    unsigned int col_idx = icol * (blockDim.x + IPAD) + irow;
+
+    tile[row_idx] = idx;
+    __syncthreads();
+
+    out[idx] = tile[col_idx];
 }
 
 int main(int argc, char** argv) {
@@ -58,8 +115,33 @@ int main(int argc, char** argv) {
     gpuRef = (int*)malloc(nBytes);
 
     CHECK(cudaMemset(d_out, 0, nBytes));
+    setRowReadRow<<<grid, block>>>(d_out);
+    CHECK(cudaMemcpy(gpuRef, d_out, nBytes, cudaMemcpyDeviceToHost));
+    if (iprintf) printData("setRowReadRow\t\t\t", gpuRef, nx, ny);
+
+    CHECK(cudaMemset(d_out, 0, nBytes));
+    setColReadCol<<<grid, block>>>(d_out);
+    CHECK(cudaMemcpy(gpuRef, d_out, nBytes, cudaMemcpyDeviceToHost));
+    if (iprintf) printData("setColReadCol\t\t\t", gpuRef, nx, ny);
+
+    CHECK(cudaMemset(d_out, 0, nBytes));
     setRowReadCol<<<grid, block>>>(d_out);
     CHECK(cudaMemcpy(gpuRef, d_out, nBytes, cudaMemcpyDeviceToHost));
-    if (iprintf) printData("setRowReadCol\t\t\t", gpuRef, nx * ny);
+    if (iprintf) printData("setRowReadCol\t\t\t", gpuRef, ny, nx);
+
+    CHECK(cudaMemset(d_out, 0, nBytes));
+    setRowReadColDyn<<<grid, block, BDIMY * BDIMX * sizeof(int)>>>(d_out);
+    CHECK(cudaMemcpy(gpuRef, d_out, nBytes, cudaMemcpyDeviceToHost));
+    if (iprintf) printData("setRowReadColDyn\t\t\t", gpuRef, ny, nx);
+
+    CHECK(cudaMemset(d_out, 0, nBytes));
+    setRowReadColPad<<<grid, block>>>(d_out);
+    CHECK(cudaMemcpy(gpuRef, d_out, nBytes, cudaMemcpyDeviceToHost));
+    if (iprintf) printData("setRowReadColPad\t\t\t", gpuRef, ny, nx);
+
+    CHECK(cudaMemset(d_out, 0, nBytes));
+    setRowReadColDynPad<<<grid, block, BDIMY * (BDIMX + IPAD) * sizeof(int)>>>(d_out);
+    CHECK(cudaMemcpy(gpuRef, d_out, nBytes, cudaMemcpyDeviceToHost));
+    if (iprintf) printData("setRowReadColDynPad\t\t\t", gpuRef, ny, nx);
 }
 

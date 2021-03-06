@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <cuda_runtime.h>
 #include <time.h>
+#include <iostream>
+#include <iomanip>
 
 #ifndef __COMMON_H__
 #define __COMMON_H__
@@ -95,5 +97,19 @@ bool checkResult(float *A, float *B, int size) {
     }
     return true;
 }
+
+template <typename T>
+void printData(char* msg, T *in, const int x, const int y) {
+    std::cout << msg << std::endl;
+    for (int i=0; i<y; i++) {
+        for (int j=0; j<x; j++) {
+            std::cout << std::setw(4) << in[i*x+j];
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::endl;
+    return;
+}
+
 
 #endif
