@@ -1,0 +1,2 @@
+CUDA_ADD_EXECUTABLE(smemSquare smemSquare.cu)
+CUDA_ADD_EXECUTABLE(smemRectangle smemRectangle.cu)
