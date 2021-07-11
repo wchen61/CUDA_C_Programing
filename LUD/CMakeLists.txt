@@ -1,0 +1,1 @@
+CUDA_ADD_EXECUTABLE(lud lud.cu)
