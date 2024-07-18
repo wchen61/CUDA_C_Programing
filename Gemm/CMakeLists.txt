@@ -1,0 +1,5 @@
+CUDA_ADD_EXECUTABLE(gemm_naive gemm_naive.cu)
+CUDA_ADD_EXECUTABLE(gemm_use_128 gemm_use_128.cu)
+CUDA_ADD_EXECUTABLE(gemm_use_tile gemm_use_tile.cu)
+CUDA_ADD_EXECUTABLE(gemm_use_smem gemm_use_smem.cu)
+CUDA_ADD_EXECUTABLE(sgemm_cuda sgemm_cuda.cu)

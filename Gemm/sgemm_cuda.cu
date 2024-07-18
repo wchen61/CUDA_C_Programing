@@ -3,6 +3,8 @@
 #include <float.h>
 #include <cuda_runtime.h>
 
+#include "../common.h"
+
 #define OFFSET(row, col, ld) ((row) * (ld) + (col))
 #define FLOAT4(pointer) (reinterpret_cast<float4*>(pointer))
 
@@ -38,6 +40,55 @@ __global__ void naiveSgemm(
     }
 }
 
+__global__ void naiveSgemm_v1(
+    float * __restrict__ a, float * __restrict__ b, float * __restrict__ c,
+    const int M, const int N, const int K) {
+    const unsigned kCount = 4;
+    unsigned int m = (blockIdx.y * blockDim.y + threadIdx.y) * kCount;
+    unsigned int n = (blockIdx.x * blockDim.x + threadIdx.x) * kCount;
+    if (m >= M || n >= N)
+        return;
+
+    float4 r_a;
+    float4 r_b;
+    float4 r_c[4];
+    memset(r_c, 0, sizeof(r_c));
+
+    for (int k = 0; k < K; k++) {
+        r_a.x = a[OFFSET(m    , k, K)];
+        r_a.y = a[OFFSET(m + 1, k, K)];
+        r_a.z = a[OFFSET(m + 2, k, K)];
+        r_a.w = a[OFFSET(m + 3, k, K)];
+        r_b = *reinterpret_cast<const float4*>(b + OFFSET(k, n, N));
+
+        r_c[0].x += r_a.x * r_b.x;
+        r_c[0].y += r_a.x * r_b.y;
+        r_c[0].z += r_a.x * r_b.z;
+        r_c[0].w += r_a.x * r_b.w;
+ 
+        r_c[1].x += r_a.y * r_b.x;
+        r_c[1].y += r_a.y * r_b.y;
+        r_c[1].z += r_a.y * r_b.z;
+        r_c[1].w += r_a.y * r_b.w;
+
+        r_c[2].x += r_a.z * r_b.x;
+        r_c[2].y += r_a.z * r_b.y;
+        r_c[2].z += r_a.z * r_b.z;
+        r_c[2].w += r_a.z * r_b.w;
+
+        r_c[3].x += r_a.w * r_b.x;
+        r_c[3].y += r_a.w * r_b.y;
+        r_c[3].z += r_a.w * r_b.z;
+        r_c[3].w += r_a.w * r_b.w;
+    }
+
+    #pragma unroll
+    for (unsigned i = 0; i < kCount; i++) {
+        *reinterpret_cast<float4*>(c + OFFSET(m + i, n, N)) = r_c[i]; 
+    }
+}	
+
+/*
 __global__ void sgemm_v1(
     float* __restrict__ a, float * __restrict__ b, float * __restrict__ c,
     const int M, const int N, const int K) {
@@ -187,39 +238,6 @@ __global__ void sgemm_v2(
     }
 }
 
-int main(void) {
-    float max_error = testError();
-    printf("Max error: %f\n", max_error);
-    printf("\n Kernel = naiveSgemm\n");
-    const int M_list[15] = {128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384};
-    const int N_list[15] = {128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384};
-    const int K_list[15] = {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024};
-
-    const int outer_repeat = 10, inner_repeat = 1;
-    const int BM = 32, BN =32;
-    void (*gpuSgemm) (float*, float*, float*, const int, const int, const int) = naiveSgemm;
-    const int TESTNUM = 15;
-    for (int i = 0; i < TESTNUM; i++) {
-        dim3 blockDim(BN, BM);
-        dim3 gridDim((N + BN - 1) / BN, (M + BM - 1) / BM);
-        double max_sec = 0.0;
-        double min_sec = DBL_MAX;
-        double total_sec = 0.0;
-
-        for (int j = 0; j < outer_repeat; j++) {
-            double this_sec = testPerformance(gpuSgemm, gridDim, blockDim, M, N, K, inner_repeat);
-            max_sec = max(max_sec, this_sec);
-            min_sec = min(min_sec, this_sec);
-            total_sec += this_sec;
-        }
-
-        double avg_sec = total_sec / outer_repeat;
-        double avg_Gflops = ((double)M) * N * K * 2 / 1024 / 1024 / 1024 / avg_sec;
-        printf("M N K = %6d %6d %6d, avg_sec = %f, max_sec = %f, min_sec = %f, avg_Gflops = %f\n", M, N, K, avg_sec, max_sec, min_sec, avg_Gflops);
-    }
-    return 0;
-}
-
 __global__ void sgemm_v3(
     float* __restrict__ a, float * __restrict__ b, float * __restrict__ c,
     const int M, const int N, const int K) {
@@ -333,13 +351,59 @@ __global__ void sgemm_v3(
         FLOAT4(c[store_c_gmem_addr]) = FLOAT4(r_c[i + TM / 2][0]);
         FLOAT4(c[store_c_gmem_addr + BN / 2]) = FLOAT4(r_c[i + TM / 2][4]);
     }
+}*/
+
+int main(void) {
+    cudaDeviceProp deviceProp{};
+    cudaGetDeviceProperties(&deviceProp, 0);
+    cudaSetDevice(0);
+    double boostFrequency = deviceProp.clockRate / 1e6;
+
+    float max_error = testError();
+    printf("Max error: %f\n", max_error);
+
+    printf("\n Kernel = naiveSgemm\n");
+    const int M_list[15] = {128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384};
+    const int N_list[15] = {128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384};
+    const int K_list[15] = {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024};
+
+    const int outer_repeat = 10, inner_repeat = 1;
+    //const int BM = 32, BN =32;
+    const int BM = 16, BN = 16;
+    void (*gpuSgemm) (float*, float*, float*, const int, const int, const int) = naiveSgemm;
+    //const int BM = 16, BN = 16;
+    //void (*gpuSgemm) (float*, float*, float*, const int, const int, const int) = naiveSgemm_v1;
+    const int TESTNUM = 15;
+    for (int i = 0; i < TESTNUM; i++) {
+        int M = M_list[i];
+        int N = N_list[i];
+        int K = K_list[i];
+        dim3 blockDim(BN, BM);
+        dim3 gridDim((N + BN - 1) / BN, (M + BM - 1) / BM);
+        //dim3 gridDim((N / 4 + BN - 1) / BN, (M / 4 + BM - 1) / BM);
+        double max_sec = 0.0;
+        double min_sec = DBL_MAX;
+        double total_sec = 0.0;
+
+        for (int j = 0; j < outer_repeat; j++) {
+            double this_sec = testPerformance(gpuSgemm, gridDim, blockDim, M, N, K, inner_repeat);
+            max_sec = max(max_sec, this_sec);
+            min_sec = min(min_sec, this_sec);
+            total_sec += this_sec;
+        }
+
+        double avg_sec = total_sec / outer_repeat;
+        double avg_Gflops = ((double)M) * N * K * 2 / 1024 / 1024 / 1024 / avg_sec;
+        printf("M N K = %6d %6d %6d, avg_sec = %f, max_sec = %f, min_sec = %f, avg_Gflops = %f\n", M, N, K, avg_sec, max_sec, min_sec, avg_Gflops);
+    }
+    return 0;
 }
 
 float testError(void) {
     const int BM = 32, BN = 32;
     const int M = 1024, N = 1024, K = 1024;
     dim3 blockDim(BN, BM);
-    dim3 gridDim((N + BN - 1) / BN, (M + BM - 1) / BM);
+    dim3 gridDim((N / 4 + BN - 1) / BN, (M / 4 + BM - 1) / BM);
 
     size_t size_a = M * K * sizeof(float);
     size_t size_b = K * N * sizeof(float);
@@ -365,7 +429,8 @@ float testError(void) {
 
     cudaMemcpy(d_a, h_a, size_a, cudaMemcpyHostToDevice);
     cudaMemcpy(d_b, h_b, size_b, cudaMemcpyHostToDevice);
-    naiveSgemm<<<gridDim, blockDim>>>(d_a, d_b, d_c, M, N, K);
+    //naiveSgemm<<<gridDim, blockDim>>>(d_a, d_b, d_c, M, N, K);
+    naiveSgemm_v1<<<gridDim, blockDim>>>(d_a, d_b, d_c, M, N, K);
     cudaMemcpy(h_d_c, d_c, size_c, cudaMemcpyDeviceToHost);
 
     float max_error = 0.0;
@@ -421,4 +486,3 @@ float testPerformance(
     cudaFree(d_c);
     return sec;
 }
-

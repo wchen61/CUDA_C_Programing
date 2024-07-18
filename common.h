@@ -101,9 +101,10 @@ bool checkResult(float *A, float *B, int size) {
 template <typename T>
 void printData(char* msg, T *in, const int x, const int y) {
     std::cout << msg << std::endl;
+    std::cout << std::fixed << std::setprecision(2);
     for (int i=0; i<y; i++) {
         for (int j=0; j<x; j++) {
-            std::cout << std::setw(4) << in[i*x+j];
+            std::cout << std::setw(8) << in[i*x+j];
         }
         std::cout << std::endl;
     }
