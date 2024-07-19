@@ -4,8 +4,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <iomanip>
+#include <cuda_runtime.h>
 
 #define OFFSET(row, col, ld) ((row) * (ld) + (col))
+
+#define checkCudaErrors(call)                                                           \
+    {                                                                                   \
+        cudaError_t err = call;                                                         \
+        if (err != cudaSuccess) {                                                       \
+            std::cerr << "CUDA error in " << __FILE__ << " at line " << __LINE__        \
+                    << ": " << cudaGetErrorString(err) << std::endl;                    \
+            exit(EXIT_FAILURE);                                                         \
+        }                                                                               \
+    }
 
 template <typename T>
 void printData(char* msg, T *in, const int x, const int y) {
@@ -43,9 +54,9 @@ float testError(
     h_a = (float*)malloc(size_a);
     h_b = (float*)malloc(size_b);
     h_c = (float*)malloc(size_c);
-    cudaMalloc(&d_a, size_a);
-    cudaMalloc(&d_b, size_b);
-    cudaMalloc(&d_c, size_c);
+    checkCudaErrors(cudaMalloc(&d_a, size_a));
+    checkCudaErrors(cudaMalloc(&d_b, size_b));
+    checkCudaErrors(cudaMalloc(&d_c, size_c));
     h_d_c = (float*)malloc(size_c);
 
     srand(time(0));
@@ -55,16 +66,19 @@ float testError(
     for (int i = 0; i < K * N; i++) {
         h_b[i] = (float)rand() / RAND_MAX;
     }
-    cudaMemset(d_c, 0, size_c);
+    checkCudaErrors(cudaMemset(d_c, 0, size_c));
     cpuSgemm(h_a, h_b, h_c, M, N, K);
-    //printData("A", h_a, K, M);
-    //printData("B", h_b, N, K);
-    //printData("C", h_c, N, M);
+    /*printData("A", h_a, K, M);
+    printData("B", h_b, N, K);
+    printData("C", h_c, N, M);*/
  
     cudaMemcpy(d_a, h_a, size_a, cudaMemcpyHostToDevice);
     cudaMemcpy(d_b, h_b, size_b, cudaMemcpyHostToDevice);
     gpuSgemm<<<gridDim, blockDim>>>(d_a, d_b, d_c, M, N, K);
+    checkCudaErrors(cudaDeviceSynchronize());
+
     cudaMemcpy(h_d_c, d_c, size_c, cudaMemcpyDeviceToHost);
+
     //printData("d_C", h_d_c, N, M);
 
     float max_error = 0.0;
@@ -107,6 +121,7 @@ float testPerformance(
 
     for (int i = 0; i < repeat; i++) {
         gpuSgemm<<<gridDim, blockDim>>>(d_a, d_b, d_c, M, N, K);
+        //checkCudaErrors(cudaDeviceSynchronize());
     }
 
     cudaEventRecord(end);
