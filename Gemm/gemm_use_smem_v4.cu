@@ -28,8 +28,8 @@ __global__ void gemm_use_smem(
     __shared__ float tileA[2][BK][BM];
     __shared__ float tileB[2][BK][BN];
     float r_c[TM][TN] = {0.0};
-    float r_a[TM] = {0.0};
-    float r_b[TN] = {0.0};
+    float r_a[2][TM] = {0.0};
+    float r_b[2][TN] = {0.0};
  
     const int tileA_element = (BM * BK) / BLOCK_SIZE;
     const int tileB_element = (BK * BN) / BLOCK_SIZE;
@@ -60,6 +60,7 @@ __global__ void gemm_use_smem(
 
     int smem_sel = 0;
     int smem_sel_next = 1;
+    __syncthreads();
 
     for (int k = BK; k < K; k += BK) {
         #pragma unroll
@@ -97,26 +98,51 @@ __global__ void gemm_use_smem(
             }
         }*/
 
-        for (int tk = 0; tk < BK; tk++) {
+        #pragma unroll
+        for (int tm = 0; tm < TM; tm += 4) {
+            int interval = (tm < TM / 2) ? tm : tm - TM / 2 +  BM / 2;
+            int a_smem_m = ty * TM / 2 + interval;
+            *reinterpret_cast<float4*>(&r_a[0][tm]) = *reinterpret_cast<float4*>(&tileA[smem_sel][0][a_smem_m]);
+        }
+        #pragma unroll
+        for (int tn = 0; tn < TN; tn +=4) {
+            int interval = (tn < TN / 2) ? tn : tn - TN / 2 + BN / 2;
+            int b_smem_n = tx * TN / 2 + interval;
+            *reinterpret_cast<float4*>(&r_b[0][tn]) = *reinterpret_cast<float4*>(&tileB[smem_sel][0][b_smem_n]);
+        }
+        int reg_sel = 0;
+        int reg_sel_next = 1;
+
+        #pragma unroll
+        for (int tk = 1; tk < BK; tk++) {
             #pragma unroll
             for (int tm = 0; tm < TM; tm += 4) {
                 int interval = (tm < TM / 2) ? tm : tm - TM / 2 +  BM / 2;
                 int a_smem_m = ty * TM / 2 + interval;
-                *reinterpret_cast<float4*>(&r_a[tm]) = *reinterpret_cast<float4*>(&tileA[smem_sel][tk][a_smem_m]);
+                *reinterpret_cast<float4*>(&r_a[reg_sel_next][tm]) = *reinterpret_cast<float4*>(&tileA[smem_sel][tk][a_smem_m]);
             }
             #pragma unroll
             for (int tn = 0; tn < TN; tn +=4) {
                 int interval = (tn < TN / 2) ? tn : tn - TN / 2 + BN / 2;
                 int b_smem_n = tx * TN / 2 + interval;
-                *reinterpret_cast<float4*>(&r_b[tn]) = *reinterpret_cast<float4*>(&tileB[smem_sel][tk][b_smem_n]);
+                *reinterpret_cast<float4*>(&r_b[reg_sel_next][tn]) = *reinterpret_cast<float4*>(&tileB[smem_sel][tk][b_smem_n]);
             }
 
             #pragma unroll
             for (int tm = 0; tm < TM; tm++) {
                 #pragma unroll
                 for (int tn = 0; tn < TN; tn++) {
-                    r_c[tm][tn] += r_a[tm] * r_b[tn];
+                    r_c[tm][tn] += r_a[reg_sel][tm] * r_b[reg_sel][tn];
                 }
+            }
+            reg_sel = !reg_sel;
+            reg_sel_next = !reg_sel_next;
+        }
+        #pragma unroll
+        for (int tm = 0; tm < TM; tm++) {
+            #pragma unroll
+            for (int tn = 0; tn < TN; tn++) {
+                r_c[tm][tn] += r_a[reg_sel][tm] * r_b[reg_sel][tn];
             }
         }
 
@@ -143,26 +169,51 @@ __global__ void gemm_use_smem(
         smem_sel_next = !smem_sel_next;
     }
 
-    for (int tk = 0; tk < BK; tk++) {
+    #pragma unroll
+    for (int tm = 0; tm < TM; tm += 4) {
+        int interval = (tm < TM / 2) ? tm : tm - TM / 2 +  BM / 2;
+        int a_smem_m = ty * TM / 2 + interval;
+        *reinterpret_cast<float4*>(&r_a[0][tm]) = *reinterpret_cast<float4*>(&tileA[smem_sel][0][a_smem_m]);
+    }
+    #pragma unroll
+    for (int tn = 0; tn < TN; tn +=4) {
+        int interval = (tn < TN / 2) ? tn : tn - TN / 2 + BN / 2;
+        int b_smem_n = tx * TN / 2 + interval;
+        *reinterpret_cast<float4*>(&r_b[0][tn]) = *reinterpret_cast<float4*>(&tileB[smem_sel][0][b_smem_n]);
+    }
+    int reg_sel = 0;
+    int reg_sel_next = 1;
+
+    #pragma unroll
+    for (int tk = 1; tk < BK; tk++) {
         #pragma unroll
         for (int tm = 0; tm < TM; tm += 4) {
             int interval = (tm < TM / 2) ? tm : tm - TM / 2 +  BM / 2;
             int a_smem_m = ty * TM / 2 + interval;
-            *reinterpret_cast<float4*>(&r_a[tm]) = *reinterpret_cast<float4*>(&tileA[smem_sel][tk][a_smem_m]);
+            *reinterpret_cast<float4*>(&r_a[reg_sel_next][tm]) = *reinterpret_cast<float4*>(&tileA[smem_sel][tk][a_smem_m]);
         }
         #pragma unroll
         for (int tn = 0; tn < TN; tn +=4) {
             int interval = (tn < TN / 2) ? tn : tn - TN / 2 + BN / 2;
             int b_smem_n = tx * TN / 2 + interval;
-            *reinterpret_cast<float4*>(&r_b[tn]) = *reinterpret_cast<float4*>(&tileB[smem_sel][tk][b_smem_n]);
+            *reinterpret_cast<float4*>(&r_b[reg_sel_next][tn]) = *reinterpret_cast<float4*>(&tileB[smem_sel][tk][b_smem_n]);
         }
 
         #pragma unroll
         for (int tm = 0; tm < TM; tm++) {
             #pragma unroll
             for (int tn = 0; tn < TN; tn++) {
-                r_c[tm][tn] += r_a[tm] * r_b[tn];
+                r_c[tm][tn] += r_a[reg_sel][tm] * r_b[reg_sel][tn];
             }
+        }
+        reg_sel = !reg_sel;
+        reg_sel_next = !reg_sel_next;
+    }
+    #pragma unroll
+    for (int tm = 0; tm < TM; tm++) {
+        #pragma unroll
+        for (int tn = 0; tn < TN; tn++) {
+            r_c[tm][tn] += r_a[reg_sel][tm] * r_b[reg_sel][tn];
         }
     }
 
