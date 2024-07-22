@@ -7,6 +7,7 @@
 #include <cuda_runtime.h>
 
 #define OFFSET(row, col, ld) ((row) * (ld) + (col))
+#define FLOAT4(pointer) (reinterpret_cast<float4*>(&(pointer))[0])
 
 #define checkCudaErrors(call)                                                           \
     {                                                                                   \
