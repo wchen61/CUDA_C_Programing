@@ -7,7 +7,7 @@
 
 // BM = blockDim.y * TM
 // BN = blockDim.x * TN
-template <int BM, int BN, int BK, int TM, int TN>
+template <int BM, int BN, int BK, int TM, int TN, int BLOCK_SIZE>
 __global__ void gemm_use_smem(
     float * __restrict__ a, float * __restrict__ b, float * __restrict__ c,
     const int M, const int N, const int K) {
@@ -25,16 +25,14 @@ __global__ void gemm_use_smem(
     if (m >= M || n >= N)
         return;
 
-    const int blockSize = blockDim.x * blockDim.y;
-
     __shared__ float tileA[BK][BM];
-    __shared__ float tileB[BK][BN + 1];
+    __shared__ float tileB[BK][BN];
     float r_c[TM][TN] = {0.0};
     float r_a[TM] = {0.0};
     float r_b[TN] = {0.0};
-
-    int tileA_element = (BM * BK) / blockSize;
-    int tileB_element = (BK * BN) / blockSize;
+ 
+    const int tileA_element = (BM * BK) / BLOCK_SIZE;
+    const int tileB_element = (BK * BN) / BLOCK_SIZE;
 
     for (int k = 0; k < K; k += BK) {
         #pragma unroll
@@ -47,7 +45,6 @@ __global__ void gemm_use_smem(
             tileA[tileA_k + 1][tileA_m] = v.y;
             tileA[tileA_k + 2][tileA_m] = v.z;
             tileA[tileA_k + 3][tileA_m] = v.w;
-            //*reinterpret_cast<float4*>(&tileA[tileA_m][tileA_k]) = *reinterpret_cast<const float4*>(a + OFFSET(gmem_m, k + tileA_k, K));
         }
 
         #pragma unroll
@@ -60,16 +57,16 @@ __global__ void gemm_use_smem(
         __syncthreads();
         
         /*if (threadIdx.x == 0 && threadIdx.y == 0) {
-            printf("K: %d\n", k);
+            printf("\nK: %d\n", k);
+            printf("\ntileA:");
             for (int m = 0; m < BM; m++) { 
-                printf("tileA %d:", m);
                 for (int k = 0; k < BK; k++) {
                     printf(" %.3f,", tileA[m][k]);
                 }
                 printf("\n");
             }
+            printf("\ntileB:");
             for (int k = 0; k < BK; k++) { 
-                printf("tileB %d:", k);
                 for (int n = 0; n < BN; n++) {
                     printf(" %.3f,", tileB[k][n]);
                 }
@@ -78,38 +75,16 @@ __global__ void gemm_use_smem(
         }*/
 
         for (int tk = 0; tk < BK; tk++) {
-            // Gflops 12231 -> 12779
-            /*#pragma unroll
-            for (int tm = 0; tm < TM; tm += 4) {
-                int a_smem_m = ty * TM + tm;
-                float r_a[4];
-                *reinterpret_cast<float4*>(&r_a[0]) = *reinterpret_cast<float4*>(&tileA[tk][a_smem_m]);
-                
-                #pragma unroll
-                for (int tn = 0; tn < TN; tn += 4) {
-                    int b_smem_n = tx * TN + tn;
-                    float r_b[4];
-                    *reinterpret_cast<float4*>(&r_b[0]) = *reinterpret_cast<float4*>(&tileB[tk][b_smem_n]);
-
-                    #pragma unroll
-                    for (int i = 0; i < 4; i++) {
-                        #pragma unroll
-                        for (int j = 0; j < 4; j++) {
-                            r_c[tm + i][tn + j] += r_a[i] * r_b[j];
-                        }
-                    }
-                }
-            }*/
-
-            // Gflops 12779 -> 12864
             #pragma unroll
             for (int tm = 0; tm < TM; tm += 4) {
-                int a_smem_m = ty * TM + tm;
+                int interval = (tm < TM / 2) ? tm : tm - TM / 2 +  BM / 2;
+                int a_smem_m = ty * TM / 2 + interval;
                 *reinterpret_cast<float4*>(&r_a[tm]) = *reinterpret_cast<float4*>(&tileA[tk][a_smem_m]);
             }
             #pragma unroll
-            for (int tn = 0; tn < TN; tn += 4) {
-                int b_smem_n = tx * TN + tn;
+            for (int tn = 0; tn < TN; tn +=4) {
+                int interval = (tn < TN / 2) ? tn : tn - TN / 2 + BN / 2;
+                int b_smem_n = tx * TN / 2 + interval;
                 *reinterpret_cast<float4*>(&r_b[tn]) = *reinterpret_cast<float4*>(&tileB[tk][b_smem_n]);
             }
 
@@ -120,17 +95,18 @@ __global__ void gemm_use_smem(
                     r_c[tm][tn] += r_a[tm] * r_b[tn];
                 }
             }
-
         }
         __syncthreads();
     }
 
     #pragma unroll
     for (int i = 0; i < TM; i++) {
-        int c_gmem_m = by * BM + ty * TM + i;
+        int interval_M = (i < TM / 2) ? i : i - TM / 2 + BM / 2;
+        int c_gmem_m = by * BM + ty * TM / 2 + interval_M;
         #pragma unroll
         for (int j = 0; j < TN; j += 4) {
-            int c_gmem_n = bx * BN + tx * TN + j;
+            int interval_N = (j < TN / 2) ? j : j - TN / 2 + BN / 2;
+            int c_gmem_n = bx * BN + tx * TN / 2 + interval_N;
             *reinterpret_cast<float4*>(c + OFFSET(c_gmem_m, c_gmem_n, N)) = *reinterpret_cast<float4*>(&r_c[i][j]);
         }
     }
@@ -139,13 +115,13 @@ __global__ void gemm_use_smem(
 int main(void) {
     const int BM = 128, BN = 128, BK = 8, TM = 8, TN = 8;
     const int TEST_M = 1024, TEST_N = 1024, TEST_K = 1024;
+    const int BLOCK_SIZE = (BN / TN) * (BM / TM);
     dim3 blockDim_T(BN / TN, BM / TM);
     dim3 gridDim_T(TEST_N / BN, TEST_M / BM);
 
-    void (*gpuSgemm) (float*, float*, float*, const int, const int, const int) = gemm_use_smem<BM, BN, BK, TM, TN>;
+    void (*gpuSgemm) (float*, float*, float*, const int, const int, const int) = gemm_use_smem<BM, BN, BK, TM, TN, BLOCK_SIZE>;
     float max_error = testError(gpuSgemm, gridDim_T, blockDim_T, TEST_M, TEST_N, TEST_K);
     printf("Max error: %f\n", max_error);
-
     printf("\n Kernel = gemm_use_smem\n");
     const int M_list[15] = {128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384};
     const int N_list[15] = {128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384};
