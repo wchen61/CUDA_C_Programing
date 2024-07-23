@@ -6,4 +6,9 @@ CUDA_ADD_EXECUTABLE(gemm_use_smem_v1 gemm_use_smem_v1.cu)
 CUDA_ADD_EXECUTABLE(gemm_use_smem_v2 gemm_use_smem_v2.cu)
 CUDA_ADD_EXECUTABLE(gemm_use_smem_v3 gemm_use_smem_v3.cu)
 CUDA_ADD_EXECUTABLE(gemm_use_smem_v4 gemm_use_smem_v4.cu)
-CUDA_ADD_EXECUTABLE(sgemm_cuda sgemm_cuda.cu)
+
+CUDA_ADD_EXECUTABLE(sgemm_cublas sgemm_cublas.cu)
+TARGET_LINK_LIBRARIES(sgemm_cublas cublas)
+
+CUDA_ADD_EXECUTABLE(sgemm_cutlass sgemm_cutlass.cu)
+target_include_directories(sgemm_cutlass PUBLIC ../cutlass)
